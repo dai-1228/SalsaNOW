@@ -204,8 +204,23 @@ namespace SalsaNOW
                     string zipFile = Path.Combine(globalDirectory, $"{desktop.name}.zip");
                     string exePath = Path.Combine(appDir, desktop.exeName);
 
-                    if (!Directory.Exists(appDir))
+                    bool needsInstall = !Directory.Exists(appDir) || !File.Exists(exePath);
+
+                    if (needsInstall)
                     {
+                        // Clean up broken install if folder exists but exe is missing
+                        if (Directory.Exists(appDir))
+                        {
+                            try
+                            {
+                                Directory.Delete(appDir, true);
+                            }
+                            catch
+                            {
+                                // Optional: retry or log
+                            }
+                        }
+
                         using (var wc = new WebClient())
                         {
                             wc.Headers.Add("Cache-Control", "no-cache");
@@ -213,15 +228,16 @@ namespace SalsaNOW
 
                             await wc.DownloadFileTaskAsync(new Uri(desktop.url), zipFile);
                             ZipFile.ExtractToDirectory(zipFile, appDir);
-                            System.IO.File.Delete(zipFile);
+                            File.Delete(zipFile);
 
-                            // Synchronous execution: Wait for WinXShell to load before launching Seelen UI
+                            // Run after fresh install
                             if (desktop.name.Contains("WinXShell"))
                             {
                                 Process.Start(exePath);
                                 Thread.Sleep(500);
-                                CloseWindowLoop("WinXShell"); 
+                                CloseWindowLoop("WinXShell");
                             }
+
                             if (desktop.name.Contains("seelenui") && skipSeelen)
                             {
                                 await ApplySeelenConfig(wc, desktop.zipConfig, zipFile);
@@ -231,23 +247,21 @@ namespace SalsaNOW
                     }
                     else
                     {
+                        // Existing valid install
                         if (desktop.name.Contains("WinXShell"))
                         {
-                            // Change winxshell exe to the proper name in case of batch failure.
-                            if (!File.Exists(exePath))
-                            {
-                                File.Move($"{appDir}\\explorer.exe", exePath);
+                            if (bingWall)
+                                await DownloadBingWallpaper(appDir);
 
-                                Thread.Sleep(1000);
-                            }
-
-                            if (bingWall) await DownloadBingWallpaper(appDir);
                             Process.Start(exePath);
                             CloseWindowLoop("WinXShell");
                         }
+
                         if (desktop.name.Contains("seelenui") && skipSeelen)
                         {
-                            using (var wc = new WebClient()) await ApplySeelenConfig(wc, desktop.zipConfig, zipFile);
+                            using (var wc = new WebClient())
+                                await ApplySeelenConfig(wc, desktop.zipConfig, zipFile);
+
                             Process.Start(exePath);
                         }
                     }
