@@ -17,7 +17,7 @@ namespace SalsaNOW
 
         static async Task Main(string[] args)
         {
-            Console.Title = "SalsaNOW V1.6.3 - by dpadGuy";
+            Console.Title = "SalsaNOW V1.6.4 - by dpadGuy";
 
             for (int i = 0; i < args.Length; i++)
             {
@@ -48,8 +48,8 @@ namespace SalsaNOW
 
             await SteamManager.ShutdownServerAsync(globalDirectory);
 
-            // Apply Nvidia optimizations if enabled
-            if (SalsaSettings.NvidiaRaytracing) NvidiaManager.EnableRTX();
+            // Apply Nvidia optimizations always
+            NvidiaManager.EnableRTX();
 
             NativeMethods.ShowWindow(NativeMethods.GetConsoleWindow(), NativeMethods.SW_HIDE);
 

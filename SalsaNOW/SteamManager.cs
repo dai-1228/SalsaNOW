@@ -98,13 +98,16 @@ namespace SalsaNOW
                     return true;
                 }, IntPtr.Zero);
             }
+
+            await Task.Delay(500); // A little bit of delay to ensure that the window has been fully closed
+
             // Retry loop to ensure junction is created once the process releases the handle
             for (int i = 0; i < 20; i++)
             {
                 try { if (Directory.Exists(dir)) Directory.Delete(dir, true);
                     if (!Directory.Exists(dir)) { Process.Start(new ProcessStartInfo("cmd.exe", $"/c mklink /J \"{dir}\" \"{crafted}\"") { UseShellExecute = true }); break; }
                 } catch { }
-                await Task.Delay(200);
+                await Task.Delay(300);
             }
         }
     }

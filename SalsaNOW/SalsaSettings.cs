@@ -18,7 +18,6 @@ namespace SalsaNOW
             var lines = File.ReadAllLines(path);
 
             // Simple parsing logic for the .ini flags
-            NvidiaRaytracing = lines.Any(l => l.Contains("NvidiaRaytracing = \"1\""));
             SkipSeelenUiExecution = lines.Any(l => l.Contains("SkipSeelenUiExecution = \"0\""));
             BingWallpaperEnabled = lines.Any(l => l.Contains("BingPhotoOfTheDayWallpaper = \"1\""));
         }
