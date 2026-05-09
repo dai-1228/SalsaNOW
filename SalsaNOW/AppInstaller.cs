@@ -86,8 +86,9 @@ namespace SalsaNOW
                             {
                                 if (app.run == "true") Process.Start(appZipExe);
                             }
-                            else if (isExe)
+                            else if (isExe) // We install exe anyway to ensure everything is up to date
                             {
+                                await webClient.DownloadFileTaskAsync(new Uri(app.url), appExePath);
                                 if (app.run == "true") Process.Start(appExePath);
                             }
                         }
