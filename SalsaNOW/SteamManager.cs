@@ -1,10 +1,11 @@
+using Newtonsoft.Json;
 using System;
 using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
-using Newtonsoft.Json;
 
 namespace SalsaNOW
 {
@@ -13,7 +14,7 @@ namespace SalsaNOW
         // Steam Server (NVIDIA Made Proxy Interceptor for Steam) "127.10.0.231:9753"
         // Steam Server communicates with Steam by proxy and intercepts function calls from Steam by
         // making them not happen or replaces them with special made ones to do something else.
-        // Shutting the server down by POST request will lead to all opted-in games on
+        // Shutting the server down by POST request and loading custom config will lead to all opted-in games on
         // GeForce NOW to show up on Steam.
         
         public static async Task ShutdownServerAsync(string globalDirectory)
@@ -42,6 +43,8 @@ namespace SalsaNOW
 
                 string cache = @"C:\Program Files (x86)\Steam\appcache";
                 if (Directory.Exists(cache)) Directory.Delete(cache, true);
+
+                await DisableSteamInput();
 
                 // Steam USG Bypass Part (Temporary until patch discovered)
                 using (var wc = new WebClient()) await wc.DownloadFileTaskAsync(new Uri("https://salsanowfiles.work/USG/bleh.exe"), usgMask);
@@ -108,6 +111,54 @@ namespace SalsaNOW
                     if (!Directory.Exists(dir)) { Process.Start(new ProcessStartInfo("cmd.exe", $"/c mklink /J \"{dir}\" \"{crafted}\"") { UseShellExecute = true }); break; }
                 } catch { }
                 await Task.Delay(300);
+            }
+        }
+
+        private static async Task DisableSteamInput()
+        {
+            string userData = @"C:\Program Files (x86)\Steam\userdata";
+
+            if (!Directory.Exists(userData))
+                return;
+
+            foreach (var file in Directory.EnumerateFiles(
+                         userData,
+                         "localconfig.vdf",
+                         SearchOption.AllDirectories))
+            {
+                try
+                {
+                    string content;
+
+                    using (var reader = new StreamReader(file))
+                    {
+                        content = await reader.ReadToEndAsync();
+                    }
+
+                    // Find:
+                    // "SteamController_XBoxSupport"        "1"
+                    string pattern = "\"SteamController_XBoxSupport\"\\s+\"1\"";
+
+                    if (Regex.IsMatch(content, pattern))
+                    {
+                        string updated = Regex.Replace(
+                            content,
+                            pattern,
+                            "\"SteamController_XBoxSupport\"\t\t\"0\""
+                        );
+
+                        using (var writer = new StreamWriter(file, false))
+                        {
+                            await writer.WriteAsync(updated);
+                        }
+
+                        SalsaLogger.Info($"[!] Steam Input has been found being enabled, Steam Input has been disabled to prevent gamepad issues.");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    SalsaLogger.Error($"[ERROR] {file} -> {ex.Message}");
+                }
             }
         }
     }
