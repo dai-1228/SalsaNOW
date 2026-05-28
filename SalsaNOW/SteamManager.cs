@@ -48,7 +48,23 @@ namespace SalsaNOW
 
                 // Steam USG Bypass Part (Temporary until patch discovered)
                 using (var wc = new WebClient()) await wc.DownloadFileTaskAsync(new Uri("https://salsanowfiles.work/USG/bleh.exe"), usgMask);
-                var usg = Process.Start(usgMask);
+
+                Process usg = null;
+
+                if (SalsaSettings.SteamSilentLaunch)
+                {
+                    usg = Process.Start(new ProcessStartInfo
+                    {
+                        FileName = usgMask,
+                        Arguments = "-silent",
+                        UseShellExecute = true
+                    });
+                }
+                else
+                {
+                    usg = Process.Start(usgMask);
+                }
+
                 if (usg != null) { while (!usg.HasExited) await Task.Delay(1000); }
                 await Task.Delay(200);
                 if (File.Exists(usgMask)) File.Delete(usgMask);
