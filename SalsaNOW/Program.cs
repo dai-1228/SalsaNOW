@@ -27,6 +27,12 @@ namespace SalsaNOW
                 }
             }
 
+            Console.WriteLine("SalsaNOW V1.6.5");
+            Console.WriteLine("IF YOU HAVE PAID FOR SALSANOW ACCESS THEN IT MEANS YOU GOT SCAMMED AND SHOULD DEMAND YOUR MONEY BACK IMMEDIATELY.");
+            Console.WriteLine("");
+
+            Thread.Sleep(1000);
+
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12 | SecurityProtocolType.Tls13;
             ServicePointManager.ServerCertificateValidationCallback += (sender, cert, chain, errors) => true;
 
@@ -65,12 +71,12 @@ namespace SalsaNOW
         {
             try
             {
-                if (!Directory.Exists(@"C:\Asgard")) 
-                { 
-                    Console.WriteLine("[!] Not a GeForce NOW environment. Exiting..."); 
-                    await Task.Delay(5000); Environment.Exit(0); 
+                if (!Directory.Exists(@"C:\Asgard"))
+                {
+                    Console.WriteLine("[!] Not a GeForce NOW environment. Exiting...");
+                    await Task.Delay(5000); Environment.Exit(0);
                 }
-                
+
                 using (var wc = new WebClient())
                 {
                     var dir = JsonConvert.DeserializeObject<System.Collections.Generic.List<SavePath>>(await wc.DownloadStringTaskAsync("https://salsanowfiles.work/jsons/directory.json"))[0];
