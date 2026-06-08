@@ -4,4 +4,6 @@
 
 **Documentation Website: https://documentation.salsanowfiles.work**
 
+**KO-FI Link: https://ko-fi.com/dpadguy**
+
 **Discord Server: https://discord.com/invite/ZQqhh4uSU2**
