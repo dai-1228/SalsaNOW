@@ -242,6 +242,9 @@ namespace SalsaNOW
                             if (desktop.name.Contains("seelenui") && skipSeelen)
                             {
                                 await ApplySeelenConfig(wc, desktop.zipConfig, zipFile);
+
+                                Thread.Sleep(500); // wait for Seelen UI to initialize
+
                                 Process.Start(exePath);
                             }
                         }
@@ -263,6 +266,8 @@ namespace SalsaNOW
                             using (var wc = new WebClient())
                                 await ApplySeelenConfig(wc, desktop.zipConfig, zipFile);
 
+                            Thread.Sleep(500); // wait for Seelen UI to initialize
+
                             Process.Start(exePath);
                         }
                     }
@@ -274,19 +279,73 @@ namespace SalsaNOW
         }
 
         // Extracts fresh Seelen UI config, cleaning the target directory beforehand to prevent corruption
-        private static async Task ApplySeelenConfig(WebClient wc, string url, string zip)
+        private static async Task<bool> ApplySeelenConfig(WebClient wc, string url, string zip)
         {
             await wc.DownloadFileTaskAsync(new Uri(url), zip);
-            string target = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "com.seelen.seelen-ui");
-            
-            try 
+
+            string target = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "com.seelen.seelen-ui");
+
+            const int maxRetries = 5;
+
+            try
             {
-                if (Directory.Exists(target)) Directory.Delete(target, true);
-                ZipFile.ExtractToDirectory(zip, target);
+                for (int attempt = 1; attempt <= maxRetries; attempt++)
+                {
+                    try
+                    {
+                        // Remove existing config
+                        if (Directory.Exists(target))
+                        {
+                            Directory.Delete(target, true);
+
+                            if (Directory.Exists(target))
+                                throw new IOException("Failed to delete target directory.");
+                        }
+
+                        // Extract new config
+                        ZipFile.ExtractToDirectory(zip, target);
+
+                        // Verify extraction
+                        if (!Directory.Exists(target) ||
+                            !Directory.EnumerateFileSystemEntries(target).Any())
+                        {
+                            throw new IOException("Extraction verification failed.");
+                        }
+
+                        return true; // Success
+                    }
+                    catch
+                    {
+                        // Clean up partial extraction before retrying
+                        try
+                        {
+                            if (Directory.Exists(target))
+                                Directory.Delete(target, true);
+                        }
+                        catch { }
+
+                        if (attempt == maxRetries)
+                            return false;
+
+                        await Task.Delay(500);
+                    }
+                }
+
+                return false;
             }
-            catch { }
-            
-            if (System.IO.File.Exists(zip)) System.IO.File.Delete(zip);
+            finally
+            {
+                if (File.Exists(zip))
+                {
+                    try
+                    {
+                        File.Delete(zip);
+                    }
+                    catch { }
+                }
+            }
         }
 
         // Fetches and applies the UHD Bing Photo of the Day
