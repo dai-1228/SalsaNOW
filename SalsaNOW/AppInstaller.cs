@@ -191,8 +191,8 @@ namespace SalsaNOW
             var explicitApps = new List<Apps>
             {
                 new Apps { name = "Discord", exeName = "DiscordSetup.exe", run = "true", url = "https://discord.com/api/downloads/distributions/app/installers/latest?channel=stable&platform=win&arch=x86", fileExtension = "exe" },
-                new Apps { name = "Roblox", exeName = "RobloxPlayerLauncher.exe", run = "true", url = "https://setup.rbxcdn.com/RobloxPlayerLauncher.exe", fileExtension = "exe" },
-                new Apps { name = "Helium", exeName = "HeliumSetup.exe", run = "true", url = "https://github.com/K3V1991/Helium-Browser/releases/download/v1.0.0/Helium-Browser-Setup-1.0.0.exe", fileExtension = "exe" }
+                new Apps { name = "Roblox", exeName = "RobloxPlayerLauncher.exe", run = "true", url = "https://www.roblox.com/download/client?os=win&renderingPlatform=nextjs", fileExtension = "exe" },
+                new Apps { name = "Helium", exeName = "HeliumSetup.exe", run = "true", url = "https://github.com/imputnet/helium-windows/releases/download/0.14.4.1/helium_0.14.4.1_x64-installer.exe", fileExtension = "exe" }
             };
 
             var tasks = explicitApps.Select(app => Task.Run(async () =>
