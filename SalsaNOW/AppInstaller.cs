@@ -15,9 +15,6 @@ namespace SalsaNOW
 {
     internal static class AppInstaller
     {
-        public static List<Apps> FinalApps = new List<Apps>();
-        public static List<SilentApps> FinalSilentApps = new List<SilentApps>();
-
         // Parallel installation of user-defined apps from remote and local JSON sources
         public static async Task AppsInstallAsync(string globalDirectory, string customAppsJsonPath)
         {
@@ -42,9 +39,12 @@ namespace SalsaNOW
                     catch (Exception ex) { SalsaLogger.Error($"Custom JSON Error: {ex.Message}"); }
                 }
 
-                var finalNames = new[] { "discord", "roblox", "helium" };
-                FinalApps.AddRange(apps.Where(a => finalNames.Any(f => a.name.ToLower().Contains(f))));
+                var finalNames = new[] { "discord", "roblox", "helium", "waterfox" };
                 apps.RemoveAll(a => finalNames.Any(f => a.name.ToLower().Contains(f)));
+                try {
+                    string wf = Path.Combine(globalDirectory, "Waterfox");
+                    if (Directory.Exists(wf)) Directory.Delete(wf, true);
+                } catch { }
 
                 var tasks = apps.Select(app => Task.Run(async () =>
                 {
@@ -136,8 +136,7 @@ namespace SalsaNOW
                     if (!allowedFiles.Contains(Path.GetFileName(file))) try { System.IO.File.Delete(file); } catch { }
                 }
 
-                var finalNames = new[] { "discord", "roblox", "helium" };
-                FinalSilentApps.AddRange(apps.Where(a => finalNames.Any(f => a.name.ToLower().Contains(f))));
+                var finalNames = new[] { "discord", "roblox", "helium", "waterfox" };
                 apps.RemoveAll(a => finalNames.Any(f => a.name.ToLower().Contains(f)));
 
                 var tasks = apps.Select(app => Task.Run(async () =>
@@ -189,92 +188,38 @@ namespace SalsaNOW
         // Install Discord, Roblox, Helium at the end with visible screens
         public static async Task InstallFinalAppsAsync(string globalDirectory)
         {
-            var tasks = new List<Task>();
-
-            foreach (var app in FinalApps)
+            var explicitApps = new List<Apps>
             {
-                tasks.Add(Task.Run(async () =>
-                {
-                    using (var webClient = new WebClient())
-                    {
-                        webClient.Headers.Add("Cache-Control", "no-cache");
-                        webClient.Headers.Add("Pragma", "no-cache");
+                new Apps { name = "Discord", exeName = "DiscordSetup.exe", run = "true", url = "https://discord.com/api/downloads/distributions/app/installers/latest?channel=stable&platform=win&arch=x86", fileExtension = "exe" },
+                new Apps { name = "Roblox", exeName = "RobloxPlayerLauncher.exe", run = "true", url = "https://setup.rbxcdn.com/RobloxPlayerLauncher.exe", fileExtension = "exe" },
+                new Apps { name = "Helium", exeName = "HeliumSetup.exe", run = "true", url = "https://github.com/K3V1991/Helium-Browser/releases/download/v1.0.0/Helium-Browser-Setup-1.0.0.exe", fileExtension = "exe" }
+            };
 
-                        string desktopPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), $"{app.name}.lnk");
-                        string appDir = Path.Combine(globalDirectory, app.name);
-                        string appExePath = Path.Combine(globalDirectory, app.exeName);
-                        string appZipExe = Path.Combine(appDir, app.exeName);
-
-                        bool isZip = app.fileExtension == "zip";
-                        bool isExe = app.fileExtension == "exe";
-
-                        if (isZip)
-                        {
-                            if (!Directory.Exists(appDir))
-                            {
-                                string zipPath = $"{appDir}.zip";
-                                await webClient.DownloadFileTaskAsync(new Uri(app.url), zipPath);
-                                ZipFile.ExtractToDirectory(zipPath, appDir);
-                                System.IO.File.Delete(zipPath);
-                                CreateShortcut(app.name, desktopPath, appZipExe, Path.GetDirectoryName(appZipExe));
-                            }
-                            if (app.run == "true") Process.Start(appZipExe);
-                        }
-                        else if (isExe)
-                        {
-                            await webClient.DownloadFileTaskAsync(new Uri(app.url), appExePath);
-                            CreateShortcut(app.name, desktopPath, appExePath, globalDirectory);
-                            if (app.run == "true") Process.Start(appExePath);
-                        }
-                    }
-                }));
-            }
-
-            foreach (var app in FinalSilentApps)
+            var tasks = explicitApps.Select(app => Task.Run(async () =>
             {
-                tasks.Add(Task.Run(async () =>
+                using (var webClient = new WebClient())
                 {
-                    using (var webClient = new WebClient())
+                    webClient.Headers.Add("Cache-Control", "no-cache");
+                    webClient.Headers.Add("Pragma", "no-cache");
+
+                    string desktopPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), $"{app.name}.lnk");
+                    string appExePath = Path.Combine(globalDirectory, app.exeName);
+
+                    await webClient.DownloadFileTaskAsync(new Uri(app.url), appExePath);
+                    CreateShortcut(app.name, desktopPath, appExePath, globalDirectory);
+                    
+                    if (app.run == "true")
                     {
-                        webClient.Headers.Add("Cache-Control", "no-cache");
-                        webClient.Headers.Add("Pragma", "no-cache");
-
-                        string silentAppsPath = Path.Combine(globalDirectory, "SilentApps");
-                        string appFolder = Path.Combine(silentAppsPath, app.name);
-                        string appPath = Path.Combine(silentAppsPath, $"{app.fileName}.{app.fileExtension}");
-                        string appZipPath = Path.Combine(appFolder, $"{app.fileName}.{app.fileExtension}");
-
-                        if (app.archive == "true")
+                        Process.Start(new ProcessStartInfo
                         {
-                            if (!System.IO.File.Exists(appZipPath))
-                            {
-                                string zip = $"{appFolder}.zip";
-                                await webClient.DownloadFileTaskAsync(new Uri(app.url), zip);
-                                ZipFile.ExtractToDirectory(zip, appFolder);
-                                System.IO.File.Delete(zip);
-                            }
-                            if (app.run == "true") Process.Start(appZipPath);
-                        }
-                        else
-                        {
-                            if (!System.IO.File.Exists(appPath))
-                            {
-                                await webClient.DownloadFileTaskAsync(new Uri(app.url), appPath);
-                            }
-                            if (app.run == "true")
-                            {
-                                Process.Start(new ProcessStartInfo
-                                {
-                                    FileName = appPath,
-                                    UseShellExecute = true,
-                                    CreateNoWindow = false,
-                                    WindowStyle = ProcessWindowStyle.Normal
-                                });
-                            }
-                        }
+                            FileName = appExePath,
+                            UseShellExecute = true,
+                            CreateNoWindow = false,
+                            WindowStyle = ProcessWindowStyle.Normal
+                        });
                     }
-                }));
-            }
+                }
+            })).ToList();
 
             await Task.WhenAll(tasks);
         }
