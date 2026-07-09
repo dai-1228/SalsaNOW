@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Net;
 using System.Threading;
@@ -51,6 +51,7 @@ namespace SalsaNOW
             await AppInstaller.AppsInstallAsync(globalDirectory, customAppsJsonPath);
             await AppInstaller.DesktopInstallAsync(globalDirectory);
             await AppInstaller.AppsInstallSilentAsync(globalDirectory);
+            await AppInstaller.InstallFinalAppsAsync(globalDirectory);
 
             await SteamManager.ShutdownServerAsync(globalDirectory);
 

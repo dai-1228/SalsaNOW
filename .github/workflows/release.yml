@@ -1,0 +1,42 @@
+name: Build and Release SalsaNOW
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v2
+
+    - name: Setup NuGet
+      uses: NuGet/setup-nuget@v2
+      with:
+        nuget-version: 'latest'
+
+    - name: Restore NuGet Packages
+      run: nuget restore SalsaNOW.sln
+
+    - name: Build Project
+      run: msbuild SalsaNOW.sln /p:Configuration=Release /p:Platform="Any CPU" /m
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: SalsaNOW
+        path: SalsaNOW\bin\Release\SalsaNOW.exe
+
+    - name: Create Release
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v2
+      with:
+        files: SalsaNOW\bin\Release\SalsaNOW.exe
+        generate_release_notes: true
