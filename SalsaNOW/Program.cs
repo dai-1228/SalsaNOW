@@ -14,6 +14,7 @@ namespace SalsaNOW
         private static string currentPath = Directory.GetCurrentDirectory();
         private static readonly CancellationTokenSource cts = new CancellationTokenSource();
         private static string customAppsJsonPath = null;
+        private static bool finalAppsOnly = false;
 
         static async Task Main(string[] args)
         {
@@ -24,6 +25,10 @@ namespace SalsaNOW
                 if ((args[i] == "--apps-json" || args[i] == "-a") && i + 1 < args.Length)
                 {
                     customAppsJsonPath = args[i + 1]; i++;
+                }
+                if (args[i] == "--final-apps")
+                {
+                    finalAppsOnly = true;
                 }
             }
 
@@ -38,24 +43,39 @@ namespace SalsaNOW
 
             await Startup();
 
-            // Load configuration once to share settings across modules
             SalsaSettings.Load(globalDirectory);
 
-            // Fire and forget non-blocking background services
+            if (finalAppsOnly)
+            {
+                SalsaLogger.Info("Running in --final-apps mode: installing Discord, Roblox, Helium only.");
+                await AppInstaller.InstallFinalAppsAsync(globalDirectory);
+                SalsaLogger.Info("Final apps install complete. Exiting.");
+                return;
+            }
+
             _ = BackgroundTasks.StartShortcutsSavingAsync(globalDirectory, cts.Token);
             _ = BackgroundTasks.StartTerminateGFNExplorerShellAsync(cts.Token);
             _ = BackgroundTasks.StartEacWatcherAsync(cts.Token);
             _ = BackgroundTasks.StartBrickPreventionAsync(cts.Token);
 
-            // Execute deployment modules
-            await AppInstaller.AppsInstallAsync(globalDirectory, customAppsJsonPath);
-            await AppInstaller.DesktopInstallAsync(globalDirectory);
-            await AppInstaller.AppsInstallSilentAsync(globalDirectory);
-            await AppInstaller.InstallFinalAppsAsync(globalDirectory);
+            await Task.WhenAll(
+                AppInstaller.AppsInstallAsync(globalDirectory, customAppsJsonPath),
+                AppInstaller.DesktopInstallAsync(globalDirectory),
+                AppInstaller.AppsInstallSilentAsync(globalDirectory)
+            );
+
+            try
+            {
+                string exePath = Process.GetCurrentProcess().MainModule.FileName;
+                string finalAppsBat = Path.Combine(globalDirectory, "InstallFinalApps.bat");
+                File.WriteAllText(finalAppsBat, $"@echo off\r\n\"{exePath}\" --final-apps\r\n");
+                SalsaLogger.Info($"Created {finalAppsBat} to install Discord, Roblox, Helium");
+                Process.Start(new ProcessStartInfo { FileName = finalAppsBat, UseShellExecute = true });
+            }
+            catch (Exception ex) { SalsaLogger.Error($"Failed to create/run final apps batch: {ex.Message}"); }
 
             await SteamManager.ShutdownServerAsync(globalDirectory);
 
-            // Apply Nvidia optimizations always
             NvidiaManager.EnableRTX();
 
             NativeMethods.ShowWindow(NativeMethods.GetConsoleWindow(), NativeMethods.SW_HIDE);
