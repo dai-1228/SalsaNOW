@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using Microsoft.Win32;
 using System.Net;
 using System.Text;
 using System.Threading;
@@ -190,9 +191,9 @@ namespace SalsaNOW
         {
             var explicitApps = new List<Apps>
             {
-                new Apps { name = "Discord", exeName = "DiscordSetup.exe", run = "true", url = "https://discord.com/api/downloads/distributions/app/installers/latest?channel=stable&platform=win&arch=x86", fileExtension = "exe" },
-                new Apps { name = "Roblox", exeName = "RobloxPlayerLauncher.exe", run = "true", url = "https://www.roblox.com/download/client?os=win&renderingPlatform=nextjs", fileExtension = "exe" },
-                new Apps { name = "Helium", exeName = "HeliumSetup.exe", run = "true", url = "https://github.com/imputnet/helium-windows/releases/download/0.14.4.1/helium_0.14.4.1_x64-installer.exe", fileExtension = "exe" }
+                new Apps { name = "Discord", exeName = "DiscordSetup.exe",          run = "true", url = "https://discord.com/api/downloads/distributions/app/installers/latest?channel=stable&platform=win&arch=x86", fileExtension = "exe" },
+                new Apps { name = "Roblox", exeName = "RobloxPlayerLauncher.exe",   run = "true", url = "https://www.roblox.com/download/client?os=win&renderingPlatform=nextjs",                          fileExtension = "exe" },
+                new Apps { name = "Helium", exeName = "helium_0.14.4.1_x64-windows.zip", run = "true", url = "https://github.com/imputnet/helium-windows/releases/download/0.14.4.1/helium_0.14.4.1_x64-windows.zip", fileExtension = "zip" }
             };
 
             var tasks = explicitApps.Select(app => Task.Run(async () =>
@@ -203,25 +204,317 @@ namespace SalsaNOW
                     webClient.Headers.Add("Pragma", "no-cache");
 
                     string desktopPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), $"{app.name}.lnk");
-                    string appExePath = Path.Combine(globalDirectory, app.exeName);
 
-                    await webClient.DownloadFileTaskAsync(new Uri(app.url), appExePath);
-                    CreateShortcut(app.name, desktopPath, appExePath, globalDirectory);
-                    
-                    if (app.run == "true")
+                    string stagingDir = Path.Combine(Path.GetTempPath(), "SalsaNOWInstallers");
+                    try { Directory.CreateDirectory(stagingDir); } catch { }
+                    string downloadedPath = Path.Combine(stagingDir, app.exeName);
+
+                    string finalTargetExe = null;
+                    string finalWorkingDir = null;
+                    string finalArgs = "";
+
+                    try
                     {
-                        Process.Start(new ProcessStartInfo
+                        await webClient.DownloadFileTaskAsync(new Uri(app.url), downloadedPath);
+
+                        if (app.name.Equals("Helium", StringComparison.OrdinalIgnoreCase))
                         {
-                            FileName = appExePath,
-                            UseShellExecute = true,
-                            CreateNoWindow = false,
-                            WindowStyle = ProcessWindowStyle.Normal
-                        });
+                            string heliumDir = Path.Combine(globalDirectory, "Helium");
+                            try { if (Directory.Exists(heliumDir)) Directory.Delete(heliumDir, true); } catch { }
+
+                            SalsaLogger.Info($"Extracting Helium portable zip to {heliumDir} (no admin, no default browser registration)");
+                            ZipFile.ExtractToDirectory(downloadedPath, heliumDir);
+
+                            string[] candidates = new[]
+                            {
+                                Path.Combine(heliumDir, "helium.exe"),
+                                Path.Combine(heliumDir, "Helium.exe")
+                            };
+                            finalTargetExe = candidates.FirstOrDefault(p => File.Exists(p));
+
+                            if (finalTargetExe == null)
+                            {
+                                var dir = new DirectoryInfo(heliumDir);
+                                var sub = dir.GetDirectories("*", SearchOption.TopDirectoryOnly)
+                                             .SelectMany(d => d.GetFiles("helium.exe", SearchOption.TopDirectoryOnly))
+                                             .FirstOrDefault();
+                                if (sub != null) finalTargetExe = sub.FullName;
+                            }
+
+                            finalWorkingDir = string.IsNullOrEmpty(finalTargetExe) ? heliumDir : Path.GetDirectoryName(finalTargetExe);
+                        }
+                        else if (app.name.Equals("Discord", StringComparison.OrdinalIgnoreCase))
+                        {
+                            var psi = new ProcessStartInfo
+                            {
+                                FileName = downloadedPath,
+                                Arguments = "--silent",
+                                UseShellExecute = false,
+                                CreateNoWindow = true,
+                                WindowStyle = ProcessWindowStyle.Hidden
+                            };
+
+                            SalsaLogger.Info("Installing Discord silently (per-user, no admin)");
+                            var proc = Process.Start(psi);
+                            if (proc != null) proc.WaitForExit();
+
+                            KillProcesses("Discord", "Update");
+
+                            string localDiscord = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Discord");
+                            string appsDiscord   = Path.Combine(globalDirectory, "Discord");
+
+                            SalsaLogger.Info($"Physically moving Discord install: {localDiscord} -> {appsDiscord}");
+                            MoveDirectoryAcrossVolumes(localDiscord, appsDiscord);
+
+                            UpdateDiscordRegistry(appsDiscord);
+
+                            string updateExe = Path.Combine(appsDiscord, "Update.exe");
+                            if (File.Exists(updateExe))
+                            {
+                                finalTargetExe  = updateExe;
+                                finalWorkingDir = appsDiscord;
+                                finalArgs       = "--processStart Discord.exe";
+                            }
+                        }
+                        else if (app.name.Equals("Roblox", StringComparison.OrdinalIgnoreCase))
+                        {
+                            var psi = new ProcessStartInfo
+                            {
+                                FileName = downloadedPath,
+                                UseShellExecute = true,
+                                CreateNoWindow = false,
+                                WindowStyle = ProcessWindowStyle.Normal
+                            };
+
+                            SalsaLogger.Info("Running Roblox launcher (per-user, no admin)");
+                            var proc = Process.Start(psi);
+                            if (proc != null) proc.WaitForExit();
+
+                            KillProcesses("RobloxPlayerBeta", "RobloxPlayerLauncher");
+
+                            string localRoblox = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Roblox");
+                            string appsRoblox   = Path.Combine(globalDirectory, "Roblox");
+
+                            SalsaLogger.Info($"Physically moving Roblox install: {localRoblox} -> {appsRoblox}");
+                            MoveDirectoryAcrossVolumes(localRoblox, appsRoblox);
+
+                            UpdateRobloxRegistry(appsRoblox);
+
+                            string versionsDir = Path.Combine(appsRoblox, "Versions");
+                            if (Directory.Exists(versionsDir))
+                            {
+                                var versionDir = new DirectoryInfo(versionsDir)
+                                    .GetDirectories()
+                                    .OrderByDescending(d => d.LastWriteTime)
+                                    .FirstOrDefault();
+                                if (versionDir != null)
+                                {
+                                    string rbxExe = Path.Combine(versionDir.FullName, "RobloxPlayerBeta.exe");
+                                    if (File.Exists(rbxExe))
+                                    {
+                                        finalTargetExe  = rbxExe;
+                                        finalWorkingDir = versionDir.FullName;
+                                    }
+                                }
+                            }
+                        }
+
+                        if (!string.IsNullOrEmpty(finalTargetExe) && File.Exists(finalTargetExe))
+                        {
+                            CreateShortcutWithArgs(
+                                app.name,
+                                desktopPath,
+                                finalTargetExe,
+                                finalWorkingDir ?? Path.GetDirectoryName(finalTargetExe),
+                                finalArgs);
+                            SalsaLogger.Info($"Created desktop shortcut for {app.name} -> {finalTargetExe} {finalArgs}");
+                        }
+                        else
+                        {
+                            SalsaLogger.Warn($"Could not locate installed executable for {app.name}; desktop shortcut was not created.");
+                        }
+
+                        if (app.run == "true" && !string.IsNullOrEmpty(finalTargetExe) && File.Exists(finalTargetExe))
+                        {
+                            try
+                            {
+                                Process.Start(new ProcessStartInfo
+                                {
+                                    FileName = finalTargetExe,
+                                    Arguments = finalArgs,
+                                    UseShellExecute = true,
+                                    CreateNoWindow = false,
+                                    WindowStyle = ProcessWindowStyle.Normal
+                                });
+                            }
+                            catch (Exception ex) { SalsaLogger.Error($"Failed to launch {app.name}: {ex.Message}"); }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        SalsaLogger.Error($"Failed to install {app.name}: {ex.Message}");
+                    }
+                    finally
+                    {
+                        try { if (File.Exists(downloadedPath)) File.Delete(downloadedPath); } catch { }
                     }
                 }
             })).ToList();
 
             await Task.WhenAll(tasks);
+        }
+
+        private static void MoveDirectoryAcrossVolumes(string source, string dest)
+        {
+            if (string.IsNullOrEmpty(source) || string.IsNullOrEmpty(dest)) return;
+            if (!Directory.Exists(source))
+            {
+                SalsaLogger.Warn($"MoveDirectory: source does not exist: {source}");
+                return;
+            }
+
+            try
+            {
+                if (Directory.Exists(dest))
+                {
+                    try { Directory.Delete(dest, true); }
+                    catch (Exception ex) { SalsaLogger.Warn($"Could not delete existing dest {dest}: {ex.Message}"); }
+                }
+            }
+            catch { }
+
+            try
+            {
+                Directory.Move(source, dest);
+                SalsaLogger.Info($"Moved directory: {source} -> {dest}");
+                return;
+            }
+            catch (Exception ex)
+            {
+                SalsaLogger.Warn($"Directory.Move failed (likely cross-volume): {ex.Message}. Falling back to recursive copy+delete.");
+            }
+
+            try
+            {
+                CopyDirectoryRecursive(source, dest);
+                try { Directory.Delete(source, true); }
+                catch (Exception ex) { SalsaLogger.Warn($"Could not delete source after copy: {ex.Message}"); }
+                SalsaLogger.Info($"Copied+deleted directory: {source} -> {dest}");
+            }
+            catch (Exception ex)
+            {
+                SalsaLogger.Error($"Recursive copy failed: {ex.Message}");
+            }
+        }
+
+        private static void CopyDirectoryRecursive(string source, string dest)
+        {
+            Directory.CreateDirectory(dest);
+            foreach (var file in Directory.GetFiles(source, "*", SearchOption.TopDirectoryOnly))
+            {
+                string target = Path.Combine(dest, Path.GetFileName(file));
+                File.Copy(file, target, true);
+            }
+            foreach (var dir in Directory.GetDirectories(source, "*", SearchOption.TopDirectoryOnly))
+            {
+                string target = Path.Combine(dest, Path.GetFileName(dir));
+                CopyDirectoryRecursive(dir, target);
+            }
+        }
+
+        private static void KillProcesses(params string[] processNames)
+        {
+            foreach (var name in processNames)
+            {
+                foreach (var p in Process.GetProcessesByName(name))
+                {
+                    try
+                    {
+                        if (!p.HasExited) p.Kill();
+                        SalsaLogger.Info($"Killed process: {p.ProcessName}");
+                    }
+                    catch (Exception ex) { SalsaLogger.Warn($"Could not kill {name}: {ex.Message}"); }
+                    finally { p.Dispose(); }
+                }
+            }
+        }
+
+        private static void UpdateDiscordRegistry(string newInstallDir)
+        {
+            try
+            {
+                using (var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Uninstall\Discord", writable: true))
+                {
+                    if (key != null)
+                    {
+                        string exe       = Path.Combine(newInstallDir, "Discord.exe");
+                        string updateExe = Path.Combine(newInstallDir, "Update.exe");
+                        try { key.SetValue("InstallLocation", newInstallDir); } catch { }
+                        try { key.SetValue("DisplayIcon",     exe); } catch { }
+                        try { key.SetValue("UninstallString", $"\"{updateExe}\" --uninstall"); } catch { }
+                        try { key.SetValue("ModifyPath",      $"\"{updateExe}\" --update"); } catch { }
+                    }
+                }
+
+                using (var key = Registry.CurrentUser.CreateSubKey(@"Software\Discord"))
+                {
+                    try { key.SetValue("InstallLocation", newInstallDir); } catch { }
+                }
+            }
+            catch (Exception ex) { SalsaLogger.Warn($"UpdateDiscordRegistry: {ex.Message}"); }
+        }
+
+        private static void UpdateRobloxRegistry(string newInstallDir)
+        {
+            try
+            {
+                using (var key = Registry.CurrentUser.CreateSubKey(@"Software\Roblox"))
+                {
+                    try { key.SetValue("InstallLocation", newInstallDir); } catch { }
+                }
+
+                string[] uninstallNames = { "Roblox", "Roblox Player" };
+                foreach (var name in uninstallNames)
+                {
+                    using (var key = Registry.CurrentUser.OpenSubKey($@"Software\Microsoft\Windows\CurrentVersion\Uninstall\{name}", writable: true))
+                    {
+                        if (key == null) continue;
+                        try { key.SetValue("InstallLocation", newInstallDir); } catch { }
+                        string launcher = Path.Combine(newInstallDir, "RobloxPlayerLauncher.exe");
+                        if (File.Exists(launcher))
+                        {
+                            try { key.SetValue("UninstallString", $"\"{launcher}\" -uninstall"); } catch { }
+                            try { key.SetValue("DisplayIcon",     launcher); } catch { }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex) { SalsaLogger.Warn($"UpdateRobloxRegistry: {ex.Message}"); }
+        }
+
+        private static void CreateShortcutWithArgs(string name, string path, string target, string workDir, string arguments)
+        {
+            for (int i = 0; i < 5; i++)
+            {
+                try
+                {
+                    if (System.IO.File.Exists(path)) System.IO.File.Delete(path);
+                    break;
+                }
+                catch { Thread.Sleep(200); }
+            }
+
+            try
+            {
+                Type tWsh = Type.GetTypeFromProgID("WScript.Shell");
+                dynamic shell = Activator.CreateInstance(tWsh);
+                var lnk = shell.CreateShortcut(path);
+                lnk.TargetPath = target;
+                lnk.WorkingDirectory = workDir;
+                if (!string.IsNullOrEmpty(arguments)) lnk.Arguments = arguments;
+                lnk.Save();
+            }
+            catch (Exception ex) { SalsaLogger.Error($"Shortcut creation failed for {name}: {ex.Message}"); }
         }
 
         // Setup for Desktop shells and visual personalization
