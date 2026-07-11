@@ -277,7 +277,7 @@ namespace SalsaNOW
                             WaitForFile(Path.Combine(localDiscord, "Update.exe"), 120000);
                             WaitForDirectory(localDiscord, "app-*", 120000);
 
-                            KillProcesses("Discord", "Update");
+                            KillProcessesInPath(localDiscord, "Discord", "Update");
 
                             string appsDiscord = Path.Combine(globalDirectory, "Discord");
 
@@ -299,12 +299,12 @@ namespace SalsaNOW
                             var psi = new ProcessStartInfo
                             {
                                 FileName = downloadedPath,
-                                UseShellExecute = true,
-                                CreateNoWindow = false,
-                                WindowStyle = ProcessWindowStyle.Normal
+                                UseShellExecute = false,
+                                CreateNoWindow = true,
+                                WindowStyle = ProcessWindowStyle.Hidden
                             };
 
-                            SalsaLogger.Info("Running Roblox launcher (per-user, no admin)");
+                            SalsaLogger.Info("Running Roblox launcher silently (per-user, no admin, no window)");
                             var proc = Process.Start(psi);
                             if (proc != null) proc.WaitForExit();
 
@@ -521,6 +521,39 @@ namespace SalsaNOW
                 {
                     try
                     {
+                        if (!p.HasExited) p.Kill();
+                        SalsaLogger.Info($"Killed process: {p.ProcessName}");
+                    }
+                    catch (Exception ex) { SalsaLogger.Warn($"Could not kill {name}: {ex.Message}"); }
+                    finally { p.Dispose(); }
+                }
+            }
+        }
+
+        private static void KillProcessesInPath(string restrictToDir, params string[] processNames)
+        {
+            foreach (var name in processNames)
+            {
+                foreach (var p in Process.GetProcessesByName(name))
+                {
+                    try
+                    {
+                        try
+                        {
+                            string exePath = p.MainModule.FileName;
+                            if (!string.IsNullOrEmpty(exePath) &&
+                                !exePath.StartsWith(restrictToDir, StringComparison.OrdinalIgnoreCase))
+                            {
+                                p.Dispose();
+                                continue;
+                            }
+                        }
+                        catch
+                        {
+                            p.Dispose();
+                            continue;
+                        }
+
                         if (!p.HasExited) p.Kill();
                         SalsaLogger.Info($"Killed process: {p.ProcessName}");
                     }
