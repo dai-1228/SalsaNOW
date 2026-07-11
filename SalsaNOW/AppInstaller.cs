@@ -435,20 +435,23 @@ namespace SalsaNOW
         {
             if (string.IsNullOrEmpty(heliumDir) || !Directory.Exists(heliumDir)) return null;
 
-            string[] candidates = new[]
+            string[] topCandidates = new[]
             {
+                Path.Combine(heliumDir, "chrome.exe"),
                 Path.Combine(heliumDir, "helium.exe"),
                 Path.Combine(heliumDir, "Helium.exe")
             };
-            string found = candidates.FirstOrDefault(p => File.Exists(p));
+            string found = topCandidates.FirstOrDefault(p => File.Exists(p));
             if (found != null) return found;
 
             try
             {
                 var dir = new DirectoryInfo(heliumDir);
-                return dir.GetDirectories("*", SearchOption.TopDirectoryOnly)
-                          .SelectMany(d => d.GetFiles("helium.exe", SearchOption.TopDirectoryOnly))
-                          .FirstOrDefault()?.FullName;
+                var sub = dir.GetDirectories("*", SearchOption.TopDirectoryOnly)
+                             .SelectMany(d => d.GetFiles("chrome.exe", SearchOption.TopDirectoryOnly)
+                                               .Concat(d.GetFiles("helium.exe", SearchOption.TopDirectoryOnly)))
+                             .FirstOrDefault();
+                return sub?.FullName;
             }
             catch { return null; }
         }
